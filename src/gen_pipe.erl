@@ -7,7 +7,10 @@
 %%%-------------------------------------------------------------------
 -module(gen_pipe).
 
--export([start_link/5, shutdown/1, send/2]).
+-export([start_link/5, 
+	 shutdown/2, 
+	 send/2, 
+	 whereis/1]).
 
 -define(impl, gen_pipe_impl).
 
@@ -69,12 +72,15 @@ start_link(PipeName, Module, Args, UpStreamPipes, Opts) ->
 %% @doc
 %%
 
--spec shutdown(Pipe :: pipe_name() | 
+-spec shutdown(Pipe :: pid() | 
 		       pipe_ref(),
-	       Reason :: any()) -> ok | {error, Reason :: any()}.
+	       Reason :: any()) -> ok.
 
 shutdown(Pipe, Reason) ->
     ?impl:shutdown(Pipe, Reason).
 
 send(Pipe, Data) ->
     ?impl:send(Pipe, Data).
+
+whereis(PipeRef) ->
+    ?impl:whereis(PipeRef).
