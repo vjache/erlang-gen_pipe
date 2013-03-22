@@ -1,0 +1,9 @@
+%% -*- mode: erlang; -*-
+{application, gen_pipe,
+ [{description, "A generic pipe library."},
+  {vsn, "0.0.1"},
+  {modules, []},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+  {build_dependencies, []},
+  {env, []}]}.
