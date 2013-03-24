@@ -36,6 +36,8 @@
 				       reference()}
 	       }).
 
+-define(NOTIFY(Msg), (catch gen_event:notify(gen_pipe_events, Msg)) ). 
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -171,17 +173,23 @@ handle_info({'$gen_pipe.subscribe.req', DownstPref, DownstPid, ReqId},
     {noreply, State#state{pstate = PState1, downst_online = dict:store(DownstPref,DownstPid, DownstOnline)} };
 %% Handle subscription acknowledgement
 handle_info({'$gen_pipe.subscribe.ack', ReqId},
-	    #state{pstate       = PState, 
+	    #state{pref         = Pref
+		   pstate       = PState, 
 		   mod          = PMod, 
 		   upst_online  = UpstOnline,
 		   upst_offline = UpstOffline,
-		   sub_reqs = SR
+		   sub_reqs     = SR
 		  } = State) ->
-    {value, {Pref, Pid, ReqId}, SR1} = lists:keytake(ReqId, 3, SR),
+    {value, {UpstPref, Pid, ReqId}, SR1} = lists:keytake(ReqId, 3, SR),
     erlang:monitor(process, Pid),
-    UpstOnline1   = [{Pref, Pid} | UpstOnline],
-    UpstOffline1  = lists:delete(Pref, UpstOffline),
-    {ok, PState1} = PMod:handle_connect(up, upstream, Pref, PState),
+    UpstOnline1   = [Upst={UpstPref, Pid} | UpstOnline],
+    UpstOffline1  = lists:delete(UpstPref, UpstOffline),
+    {ok, PState1} = PMod:handle_connect(up, upstream, UpstPref, PState),
+    ?NOTIFY({connected_to_upstream,     Pref, Upst}),
+    case UpstOffline1 of
+	[] -> ?NOTIFY({connected_to_all_upstream, Pref, UpstOnline1});
+	_  -> ok
+    end,
     {noreply, 
      State#state{pstate       = PState1,
 		 upst_online  = UpstOnline1, 
