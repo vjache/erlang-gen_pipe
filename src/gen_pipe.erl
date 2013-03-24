@@ -62,7 +62,9 @@
         Module   :: atom(), 
         Args     :: any(), 
         UpStreamPipes :: [ pipe_ref()], 
-        Opts     :: [any()]) ->
+        Opts     :: [{await_upstream_connect, 
+		      sync | async | fun( ( pipe_name() ) -> ok) } | 
+		     any()]) ->
                         {ok, pid()} | {error, any()}.
 
 start_link(PipeName, Module, Args, UpStreamPipes, Opts) ->
@@ -84,3 +86,6 @@ send(Pipe, Data) ->
 
 whereis(PipeRef) ->
     ?impl:whereis(PipeRef).
+
+%start_link_pipeline(Specs) ->
+%    [{PipeName, {M, F, Args}} <- Specs]
