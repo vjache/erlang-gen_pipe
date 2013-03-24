@@ -124,7 +124,7 @@ start_link_filter(
   FilterFun, UpstPipeRefs, Opts) when is_function(FilterFun, 1), is_list(UpstPipeRefs) ->
     gen_pipe:start_link(
       PipeName, ?MODULE, {filter, FilterFun, Opts}, 
-      UpstPipeRefs, []).
+      UpstPipeRefs, Opts).
 
 %%
 %% @doc 
@@ -147,7 +147,7 @@ start_link_foreach(
   ForeachFun, UpstPipeRefs, Opts) when is_function(ForeachFun, 1), is_list(UpstPipeRefs) ->
     gen_pipe:start_link(
       PipeName, ?MODULE, {foreach, ForeachFun, Opts}, 
-      UpstPipeRefs, []).
+      UpstPipeRefs, Opts).
 
 %%
 %% @doc 
@@ -170,7 +170,7 @@ start_link_fold(
   FoldFun, Acc, UpstPipeRefs, Opts) when is_function(FoldFun, 2), is_list(UpstPipeRefs) ->
     gen_pipe:start_link(
       PipeName, ?MODULE, {fold, FoldFun, Acc, Opts}, 
-      UpstPipeRefs, []).
+      UpstPipeRefs, Opts).
 
 %%-----------------------------------------------
 %% 'gen_pipe' behaviour callbacks
