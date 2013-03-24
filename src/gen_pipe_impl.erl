@@ -33,8 +33,11 @@
 		upst_offline  = [] :: gen_pipe:pipe_ref(),
 		downst_online = dict:new(),
 		sub_reqs      = [] :: {gen_pipe:pipe_ref(), 
-				       reference()}
+				       reference()},
+		opts
 	       }).
+
+-record(pipe_opts, {await_upstream_connect = async}).
 
 -define(NOTIFY(Msg), (catch gen_event:notify(gen_pipe_events, Msg)) ). 
 
@@ -46,9 +49,42 @@ start_link(PipeName, Module, Args, UpStreamPipes, Opts)
   when is_atom(Module), 
        is_list(UpStreamPipes), 
        is_list(Opts) ->
-    gen_server:start_link(
-      PipeName, ?MODULE, 
-      {PipeName, Module, Args, UpStreamPipes}, Opts).
+    {PipeOpts, GenServerOpts} = parse_opts(Opts),
+    {AwaitFun, NotifyFun} = 
+	case PipeOpts#pipe_opts.await_upstream_connect of
+	    sync -> 
+		Marker = make_ref(),
+		Self = self(),
+		{fun()-> receive 
+			     Marker -> 
+				 ok 
+			 after 5000 -> 
+				 exit({failed_connect_upstream, UpStreamPipes}) 
+			 end 
+		 end,
+		 fun(_) -> Self ! Marker end};
+	    async -> 
+		{fun()-> ok end, fun(_)-> ok end};
+	    NF when is_function(NF, 1) -> 
+		{fun()-> ok end, NF}
+	end,
+    PipeOpts1 = PipeOpts#pipe_opts{await_upstream_connect = NotifyFun},
+    case gen_server:start_link(
+	   PipeName, ?MODULE, 
+	   {PipeName, Module, Args, UpStreamPipes, PipeOpts1}, GenServerOpts) of
+	{ok, _} = R -> AwaitFun(),R;
+	Err         -> Err
+    end.
+
+parse_opts(Opts) ->
+    parse_opts(#pipe_opts{}, [], Opts).
+
+parse_opts(PO, GO, [{await_upstream_connect, Val} | Tail]) ->
+    parse_opts(PO#pipe_opts{await_upstream_connect = Val}, GO, Tail);
+parse_opts(PO, GO, [H|Tail]) ->
+    parse_opts(PO, [H | GO], Tail);
+parse_opts(PO, GO, []) ->
+    {PO, GO}.
 
 shutdown(PipeRef, Reason) ->
     ok = gen_server:call(
@@ -72,17 +108,22 @@ whereis(PipeRef) ->
 %%% gen_server callbacks
 %%%===================================================================
 
-init({PipeName, Module, Args, UpStreamPipes}) ->
+init({PipeName, Module, Args, UpStreamPipes, PipeOpts}) ->
     try Module:init(Args) of
 	{ok, PState} ->
 	    Watcher = get_watcher(),
 	    Watcher:subscribe_for_online(UpStreamPipes),
+	    case UpStreamPipes of
+		[] -> (PipeOpts#pipe_opts.await_upstream_connect)(PipeName);
+		_  -> ok
+	    end,
 	    {ok, 
 	     #state{pname        = PipeName,
                     pref         = gref(PipeName),
 		    pstate       = PState, 
 		    mod          = Module, 
-		    upst_offline = UpStreamPipes}}
+		    upst_offline = UpStreamPipes,
+		    opts = PipeOpts}}
     catch
 	_:Reason -> {stop, Reason}
     end.
@@ -173,12 +214,14 @@ handle_info({'$gen_pipe.subscribe.req', DownstPref, DownstPid, ReqId},
     {noreply, State#state{pstate = PState1, downst_online = dict:store(DownstPref,DownstPid, DownstOnline)} };
 %% Handle subscription acknowledgement
 handle_info({'$gen_pipe.subscribe.ack', ReqId},
-	    #state{pref         = Pref
+	    #state{pname        = PName,
+		   pref         = Pref,
 		   pstate       = PState, 
 		   mod          = PMod, 
 		   upst_online  = UpstOnline,
 		   upst_offline = UpstOffline,
-		   sub_reqs     = SR
+		   sub_reqs     = SR,
+		   opts = #pipe_opts{await_upstream_connect = AUC}
 		  } = State) ->
     {value, {UpstPref, Pid, ReqId}, SR1} = lists:keytake(ReqId, 3, SR),
     erlang:monitor(process, Pid),
@@ -187,7 +230,9 @@ handle_info({'$gen_pipe.subscribe.ack', ReqId},
     {ok, PState1} = PMod:handle_connect(up, upstream, UpstPref, PState),
     ?NOTIFY({connected_to_upstream,     Pref, Upst}),
     case UpstOffline1 of
-	[] -> ?NOTIFY({connected_to_all_upstream, Pref, UpstOnline1});
+	[] ->
+	    AUC(PName),
+	    ?NOTIFY({connected_to_all_upstream, Pref, UpstOnline1});
 	_  -> ok
     end,
     {noreply, 
